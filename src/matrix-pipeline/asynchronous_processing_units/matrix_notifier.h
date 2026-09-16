@@ -47,6 +47,8 @@ class MatrixNotifier final
   int m_video_precapture_frames{45};
   int m_roi_gap_tolerance_frames{120};
   int m_video_postcapture_frames{45};
+  // held back while recording, i.e. the tail dropped at stop
+  int m_video_delay_frames{0};
 
   std::chrono::time_point<std::chrono::steady_clock> m_current_video_start_at;
   size_t m_current_video_frame_count{0};
@@ -74,8 +76,6 @@ class MatrixNotifier final
   static void
   finalize_video_then_send_out(std::string,
                                const std::shared_ptr<MatrixNotifier>);
-  std::optional<std::string> trim_video(const std::string &input_video_path,
-                                        int frames_to_remove);
 
 public:
   explicit MatrixNotifier(const std::string &unit_path)
