@@ -122,15 +122,15 @@ void VideoFeedManager::always_fill_in_frame(
 
 void VideoFeedManager::handle_video_capture(
     const ProcessingUnit::PipelineContext &ctx) {
-  using namespace std::chrono_literals;
-  const auto now = std::chrono::steady_clock::now();
+  using namespace std::chrono;
+  const auto now = steady_clock::now();
   if (ctx.captured_from_real_device)
     return;
-  const auto video_feed_down_for =
-      std::chrono::duration_cast<std::chrono::seconds>(
-          now - ctx.capture_from_this_device_since);
-  const std::chrono::seconds backoff =
-      std::min(std::max(video_feed_down_for, 2s), 60s * 10);
+  const auto since = ctx.capture_from_this_device_since;
+  const auto down_for = duration_cast<seconds>(now - since);
+  // frozen at the previous attempt, so the wait doubles each failure
+  const auto backoff = std::clamp(
+      duration_cast<seconds>(m_last_vc_open_attempt - since), 2s, 600s);
   if (now - m_last_vc_open_attempt < backoff)
     return;
   m_last_vc_open_attempt = now;
@@ -138,12 +138,12 @@ void VideoFeedManager::handle_video_capture(
   if (ctx.frame_seq_num > 90)
     SPDLOG_WARN("device_down_for(sec): {}, invoking "
                 "cv::cudacodec::createVideoReader({}), backoff(sec): {}",
-                video_feed_down_for.count(), ctx.device_info.uri,
-                backoff.count());
+                down_for.count(), ctx.device_info.uri, backoff.count());
   auto params = cv::cudacodec::VideoReaderInitParams();
   params.allowFrameDrop = true;
   try {
-    vr = cv::cudacodec::createVideoReader(ctx.device_info.uri, {}, params);
+    vr = cv::cudacodec::createVideoReader(
+        ctx.device_info.uri, {cv::CAP_PROP_OPEN_TIMEOUT_MSEC, 5000}, params);
     vr->set(cv::cudacodec::ColorFormat::BGR);
     SPDLOG_INFO("cv::cudacodec::createVideoReader({}) succeeded",
                 ctx.device_info.uri);
