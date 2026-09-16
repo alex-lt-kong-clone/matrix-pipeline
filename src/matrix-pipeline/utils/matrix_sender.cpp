@@ -46,7 +46,7 @@ std::string MatrixSender::upload(const std::string &data,
   constexpr int max_retry_count = 10;
 
   cpr::Response r;
-  for (int i = 0; i < max_retry_count && ev_flag == 0; ++i) {
+  for (int i = 0; i < max_retry_count && (i == 0 || ev_flag == 0); ++i) {
     r = cpr::Post(cpr::Url{url},
                   cpr::Header{{"Authorization", "Bearer " + accessToken},
                               {"Content-Type", contentType}},
@@ -218,7 +218,7 @@ void MatrixSender::send_video_from_memory(const std::string &video_data,
    }*/
   // SPDLOG_INFO("content: {}", content.dump());
   constexpr size_t max_retry_count = 5;
-  for (size_t i = 0; i < max_retry_count && ev_flag == 0; ++i) {
+  for (size_t i = 0; i < max_retry_count && (i == 0 || ev_flag == 0); ++i) {
     if (send_event(content, "m.video"))
       break;
     const auto retry_delay_sec = i * 5;
