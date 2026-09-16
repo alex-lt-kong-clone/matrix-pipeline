@@ -124,20 +124,22 @@ void VideoFeedManager::handle_video_capture(
     const ProcessingUnit::PipelineContext &ctx) {
   using namespace std::chrono_literals;
   const auto now = std::chrono::steady_clock::now();
-  if (ctx.captured_from_real_device || now < m_next_vc_open_attempt)
+  if (ctx.captured_from_real_device)
     return;
   const auto video_feed_down_for =
       std::chrono::duration_cast<std::chrono::seconds>(
           now - ctx.capture_from_this_device_since);
-  const std::chrono::seconds delay_before_next_attempt =
+  const std::chrono::seconds backoff =
       std::min(std::max(video_feed_down_for, 2s), 60s * 10);
-  m_next_vc_open_attempt = now + delay_before_next_attempt;
+  if (now - m_last_vc_open_attempt < backoff)
+    return;
+  m_last_vc_open_attempt = now;
   // give the video feed a few sec to open without complaining
   if (ctx.frame_seq_num > 90)
     SPDLOG_WARN("device_down_for(sec): {}, invoking "
-                "cv::cudacodec::createVideoReader({}), next attempt in {} sec",
+                "cv::cudacodec::createVideoReader({}), backoff(sec): {}",
                 video_feed_down_for.count(), ctx.device_info.uri,
-                delay_before_next_attempt.count());
+                backoff.count());
   auto params = cv::cudacodec::VideoReaderInitParams();
   params.allowFrameDrop = true;
   try {

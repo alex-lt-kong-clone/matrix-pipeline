@@ -30,7 +30,7 @@ private:
   std::string deviceName;
 
   cv::Ptr<cv::cudacodec::VideoReader> vr{nullptr};
-  std::chrono::steady_clock::time_point m_next_vc_open_attempt;
+  std::chrono::steady_clock::time_point m_last_vc_open_attempt;
   void always_fill_in_frame(cv::cuda::GpuMat &frame,
                             ProcessingUnit::PipelineContext &ctx);
   void handle_video_capture(const ProcessingUnit::PipelineContext &ctx);
