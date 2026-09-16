@@ -8,7 +8,6 @@
 
 #include <absl/strings/internal/resize_uninitialized.h>
 #include <chrono>
-#include <future>
 #include <string>
 #include <vector>
 
@@ -42,28 +41,21 @@ RoiLookupResult MatrixNotifier::look_for_roi(const PipelineContext &ctx) const {
 }
 
 void MatrixNotifier::finalize_video_then_send_out(
-    std::string temp_video_path,
-    const std::shared_ptr<MatrixNotifier> This /* MUST pass by val here*/) {
+    const std::string temp_video_path, const std::string jpeg_data,
+    const cv::Size thumbnail_size, const size_t frame_count) const {
   using namespace std::chrono;
 
-  std::string jpeg_data;
-  if (!This->m_gpu_encoder->encode(This->m_max_roi_score_frame, jpeg_data,
-                                   90)) {
-    SPDLOG_ERROR("m_gpu_encoder->encode() failed");
-  }
-
-  const auto video_duration_ms = static_cast<long>(
-      This->m_current_video_frame_count * 1000.0 / This->m_fps);
+  const auto video_duration_ms =
+      static_cast<long>(frame_count * 1000.0 / m_fps);
   std::error_code ec;
   const auto video_size = std::filesystem::file_size(temp_video_path, ec);
   const auto send_video_start_at = steady_clock::now();
-  This->m_sender->send_video(
+  m_sender->send_video(
       temp_video_path,
       fmt::format("{:%Y-%m-%dT%H:%M:%S}.mp4", system_clock::now()),
       video_duration_ms,
       fmt::format("{:%Y-%m-%dT%H:%M:%S}", system_clock::now()), jpeg_data,
-      This->m_max_roi_score_frame.size().width,
-      This->m_max_roi_score_frame.size().height);
+      thumbnail_size.width, thumbnail_size.height);
   const auto send_video_ms =
       duration_cast<milliseconds>(steady_clock::now() - send_video_start_at)
           .count();
@@ -165,11 +157,16 @@ void MatrixNotifier::handle_video(const cv::cuda::GpuMat &frame,
     m_state = Utils::VideoRecordingState::IDLE;
     if (!m_current_video_should_be_suppressed &&
         m_current_video_frame_count > 0) {
-      // creating a shared_ptr from *this, s.t. the detach()'ed t will never
-      // access *this after *this is deleted.
-      auto self_ptr = shared_from_this();
-      std::thread(finalize_video_then_send_out, m_temp_video_path, self_ptr)
-          .detach();
+      std::string jpeg_data;
+      if (!m_gpu_encoder->encode(m_max_roi_score_frame, jpeg_data, 90))
+        SPDLOG_ERROR("m_gpu_encoder->encode() failed");
+      std::erase_if(m_pending_sends, [](auto &f) {
+        return f.wait_for(0s) == std::future_status::ready;
+      });
+      m_pending_sends.push_back(std::async(
+          std::launch::async, &MatrixNotifier::finalize_video_then_send_out,
+          this, m_temp_video_path, std::move(jpeg_data),
+          m_max_roi_score_frame.size(), m_current_video_frame_count));
     } else {
       try {
         if (!std::filesystem::remove(m_temp_video_path)) {
