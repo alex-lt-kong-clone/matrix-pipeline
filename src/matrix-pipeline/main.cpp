@@ -22,10 +22,7 @@ using json = nlohmann::json;
 string config_path =
     string(getenv("HOME")) + "/.config/ak-studio/cuda-motion.jsonc";
 
-void signal_handler_cb(__attribute__((unused)) int signum) {
-  drogon::app().quit();
-  ev_flag = 1;
-}
+void signal_handler_cb(__attribute__((unused)) int signum) { ev_flag = 1; }
 
 void configure_spdlog() {
 
@@ -115,6 +112,7 @@ int main(int argc, char *argv[]) {
   mgr->feed_capture_ev();
   SPDLOG_INFO("VideoFeedManager's event loop exited gracefully");
 
+  app().quit();
   th_drogon.join();
   SPDLOG_INFO("Drogon exited");
 
