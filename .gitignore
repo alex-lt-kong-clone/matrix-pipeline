@@ -162,3 +162,5 @@ build/
 nohup.out
 build/
 compile_commands.json
+/MEMORY/
+/tmp/
