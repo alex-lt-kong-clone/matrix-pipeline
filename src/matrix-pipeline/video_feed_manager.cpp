@@ -128,7 +128,7 @@ void VideoFeedManager::handle_video_capture(
     return;
   const auto since = ctx.capture_from_this_device_since;
   const auto down_for = duration_cast<seconds>(now - since);
-  // frozen at the previous attempt, so the wait doubles each failure
+  // outage length at the previous attempt: doubles per failure, <0 on a new one
   const auto backoff = std::clamp(
       duration_cast<seconds>(m_last_vc_open_attempt - since), 2s, 600s);
   if (now - m_last_vc_open_attempt < backoff)
