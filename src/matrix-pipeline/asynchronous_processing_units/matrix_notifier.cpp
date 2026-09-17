@@ -41,6 +41,7 @@ RoiLookupResult MatrixNotifier::look_for_roi(const PipelineContext &ctx) const {
   return NotFound;
 }
 
+// Post-step on purpose: the recording on disk must stay complete (see write)
 std::optional<std::string>
 MatrixNotifier::trim_video(const std::string &input_video_path,
                            const std::string &trimmed_video_path,
@@ -280,6 +281,8 @@ void MatrixNotifier::handle_video(const cv::cuda::GpuMat &frame,
     m_max_roi_score = roi_score;
   }
 
+  // Always write the tail: it is trimmed only on the uploaded copy so that
+  // consecutive recordings stay concatenable without a gap.
   m_writer->write(m_frames_queue.front().frame);
   m_frames_queue.pop();
   ++m_current_video_frame_count;
