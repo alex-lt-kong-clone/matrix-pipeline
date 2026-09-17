@@ -4,6 +4,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <fmt/chrono.h>
 #include <fmt/format.h>
+#include <gsl/gsl>
 #include <nlohmann/json.hpp>
 
 #include <absl/strings/internal/resize_uninitialized.h>
@@ -44,6 +45,10 @@ std::optional<std::string>
 MatrixNotifier::trim_video(const std::string &input_video_path,
                            const std::string &trimmed_video_path,
                            const int frames_to_remove) const {
+  const auto remove_trimmed = gsl::finally([&trimmed_video_path] {
+    std::error_code ec;
+    std::filesystem::remove(trimmed_video_path, ec);
+  });
   try {
     // 2. Probe Metadata (Standard VideoCapture for header info)
     cv::VideoCapture cap(input_video_path);
@@ -108,9 +113,6 @@ MatrixNotifier::trim_video(const std::string &input_video_path,
     return buffer;
 
   } catch (const std::exception &e) {
-    if (std::filesystem::exists(trimmed_video_path)) {
-      std::filesystem::remove(trimmed_video_path);
-    }
     SPDLOG_ERROR("e.what(): {}", e.what());
     return std::nullopt;
   }
