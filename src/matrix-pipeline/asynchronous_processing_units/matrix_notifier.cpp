@@ -40,31 +40,116 @@ RoiLookupResult MatrixNotifier::look_for_roi(const PipelineContext &ctx) const {
   return NotFound;
 }
 
+std::optional<std::string>
+MatrixNotifier::trim_video(const std::string &input_video_path,
+                           const std::string &trimmed_video_path,
+                           const int frames_to_remove) const {
+  try {
+    // 2. Probe Metadata (Standard VideoCapture for header info)
+    cv::VideoCapture cap(input_video_path);
+    if (!cap.isOpened()) {
+      SPDLOG_ERROR("!cap.isOpened()");
+      return std::nullopt;
+    }
+
+    const auto total_frames =
+        static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    const cv::Size frame_size(
+        static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH)),
+        static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT)));
+    cap.release();
+
+    const int frames_after_trim = total_frames - frames_to_remove;
+    if (frames_after_trim < 0) {
+      SPDLOG_ERROR(
+          "total_frames: {}, frames_to_remove: {}, frames_after_trim: {} < 0",
+          total_frames, frames_to_remove, frames_after_trim);
+      return std::nullopt;
+    }
+
+    cv::Ptr<cv::cudacodec::VideoReader> reader =
+        cv::cudacodec::createVideoReader(input_video_path);
+    reader->set(cv::cudacodec::ColorFormat::BGR);
+
+    cv::cudacodec::EncoderParams params;
+    // 2. Set Rate Control to Variable Bitrate
+    params.rateControlMode = cv::cudacodec::ENC_PARAMS_RC_VBR;
+    params.targetQuality = m_target_quality;
+    const auto writer = cv::cudacodec::createVideoWriter(
+        trimmed_video_path, frame_size, cv::cudacodec::Codec::HEVC, m_fps,
+        cv::cudacodec::ColorFormat::BGR, params);
+
+    cv::cuda::GpuMat d_frame;
+    int current_frame = 0;
+
+    while (current_frame < frames_after_trim && reader->nextFrame(d_frame)) {
+      if (d_frame.empty()) {
+        SPDLOG_ERROR("!d_frame.empty()");
+        break;
+      }
+      writer->write(d_frame);
+      current_frame++;
+    }
+
+    writer->release();
+
+    std::error_code ec;
+    auto size = std::filesystem::file_size(trimmed_video_path, ec);
+    std::ifstream file(trimmed_video_path, std::ios::binary);
+    if (ec || !file) {
+      SPDLOG_ERROR("IO error");
+      return std::nullopt;
+    }
+    std::string buffer(size, '\0'); // 1. Pre-allocate exact size
+    if (!file.read(buffer.data(), size)) {
+      SPDLOG_ERROR("IO error");
+      return std::nullopt;
+    }
+    return buffer;
+
+  } catch (const std::exception &e) {
+    if (std::filesystem::exists(trimmed_video_path)) {
+      std::filesystem::remove(trimmed_video_path);
+    }
+    SPDLOG_ERROR("e.what(): {}", e.what());
+    return std::nullopt;
+  }
+}
+
 void MatrixNotifier::finalize_video_then_send_out(
-    const std::string temp_video_path, const std::string jpeg_data,
-    const cv::Size thumbnail_size, const size_t frame_count) const {
+    const std::string temp_video_path, const std::string trimmed_video_path,
+    const std::string jpeg_data, const cv::Size thumbnail_size,
+    const size_t frame_count) const {
   using namespace std::chrono;
 
   const auto video_duration_ms =
       static_cast<long>(frame_count * 1000.0 / m_fps);
-  std::error_code ec;
-  const auto video_size = std::filesystem::file_size(temp_video_path, ec);
   const auto send_video_start_at = steady_clock::now();
-  m_sender->send_video(
-      temp_video_path,
-      fmt::format("{:%Y-%m-%dT%H:%M:%S}.mp4", system_clock::now()),
-      video_duration_ms,
-      fmt::format("{:%Y-%m-%dT%H:%M:%S}", system_clock::now()), jpeg_data,
-      thumbnail_size.width, thumbnail_size.height);
-  const auto send_video_ms =
-      duration_cast<milliseconds>(steady_clock::now() - send_video_start_at)
-          .count();
-  SPDLOG_INFO("video size: {}KB + thumbnail size {}KB, video_length(sec): "
-              "{:.1f}, send_video() took {}ms ({:.0f}KB/sec)",
-              video_size / 1024, jpeg_data.size() / 1024,
-              video_duration_ms / 1000.0, send_video_ms,
-              (video_size + jpeg_data.size()) / 1024.0 /
-                  std::max<long>(send_video_ms, 1) * 1000);
+  int frames_to_remove = m_roi_gap_tolerance_frames -
+                         m_video_postcapture_frames - m_video_precapture_frames;
+  if (frames_to_remove < 0)
+    frames_to_remove = 0;
+  if (const auto video =
+          trim_video(temp_video_path, trimmed_video_path, frames_to_remove);
+      video.has_value()) {
+    m_sender->send_video_from_memory(
+        video.value(),
+        fmt::format("{:%Y-%m-%dT%H:%M:%S}.mp4", system_clock::now()),
+        video_duration_ms,
+        fmt::format("{:%Y-%m-%dT%H:%M:%S}", system_clock::now()), jpeg_data,
+        thumbnail_size.width, thumbnail_size.height);
+    const auto send_video_ms =
+        duration_cast<milliseconds>(steady_clock::now() - send_video_start_at)
+            .count();
+    SPDLOG_INFO("video size: {}KB + thumbnail size {}KB, video_length(sec): "
+                "{:.1f}, send_video_from_memory() took {}ms ({:.0f}KB/sec)",
+                video.value().size() / 1024, jpeg_data.size() / 1024,
+                video_duration_ms / 1000.0, send_video_ms,
+                (video.value().size() + jpeg_data.size()) / 1024.0 /
+                    std::max<long>(send_video_ms, 1) * 1000);
+  } else {
+    SPDLOG_ERROR("trim_video() failed");
+  }
   try {
     if (!std::filesystem::remove(temp_video_path)) {
       SPDLOG_ERROR("std::filesystem::remove({}) returns false",
@@ -82,9 +167,8 @@ void MatrixNotifier::handle_video(const cv::cuda::GpuMat &frame,
   using namespace std::chrono;
 
   m_frames_queue.push({frame, ctx});
-  while (m_state == Utils::VideoRecordingState::IDLE &&
-         m_frames_queue.size() >
-             static_cast<size_t>(m_video_precapture_frames)) {
+  while (m_frames_queue.size() >
+         static_cast<size_t>(m_video_precapture_frames)) {
     m_frames_queue.pop();
   }
 
@@ -165,8 +249,11 @@ void MatrixNotifier::handle_video(const cv::cuda::GpuMat &frame,
       });
       m_pending_sends.push_back(std::async(
           std::launch::async, &MatrixNotifier::finalize_video_then_send_out,
-          this, m_temp_video_path, std::move(jpeg_data),
-          m_max_roi_score_frame.size(), m_current_video_frame_count));
+          this, m_temp_video_path,
+          fmt::format("/tmp/nvenc_buffer_{}.mp4",
+                      boost::uuids::to_string(m_uuid_generator())),
+          std::move(jpeg_data), m_max_roi_score_frame.size(),
+          m_current_video_frame_count));
     } else {
       try {
         if (!std::filesystem::remove(m_temp_video_path)) {
@@ -185,16 +272,15 @@ void MatrixNotifier::handle_video(const cv::cuda::GpuMat &frame,
     }
     return;
   }
-  while (m_frames_queue.size() > static_cast<size_t>(m_video_delay_frames)) {
-    if (const auto roi_score = calculate_roi_score(m_frames_queue.front().ctx);
-        roi_score >= m_max_roi_score /* must be >=, not >*/) {
-      m_max_roi_score_frame = m_frames_queue.front().frame;
-      m_max_roi_score = roi_score;
-    }
-    m_writer->write(m_frames_queue.front().frame);
-    m_frames_queue.pop();
-    ++m_current_video_frame_count;
+  if (const auto roi_score = calculate_roi_score(m_frames_queue.front().ctx);
+      roi_score >= m_max_roi_score /* must be >=, not >*/) {
+    m_max_roi_score_frame = m_frames_queue.front().frame;
+    m_max_roi_score = roi_score;
   }
+
+  m_writer->write(m_frames_queue.front().frame);
+  m_frames_queue.pop();
+  ++m_current_video_frame_count;
   if (roi_flag == Found &&
       ctx.change_rate > m_maintenance_min_frame_change_rate)
     m_current_video_without_detection_frames = 0;
@@ -263,9 +349,6 @@ bool MatrixNotifier::init(const njson &config) {
       config.value("videoPrecaptureFrames", m_video_precapture_frames);
   m_video_postcapture_frames =
       config.value("videoPostcaptureFrames", m_video_postcapture_frames);
-  m_video_delay_frames =
-      std::max(m_video_precapture_frames,
-               m_roi_gap_tolerance_frames - m_video_postcapture_frames);
   m_enable_yolo_roi =
       config.value("/roi/enableYoloRoi"_json_pointer, m_enable_yolo_roi);
   m_enable_sface_roi =
@@ -279,14 +362,13 @@ bool MatrixNotifier::init(const njson &config) {
 
   SPDLOG_INFO(
       "video_max_length(sec): {}, m_roi_gap_tolerance_frames: {}, "
-      "video_precapture_frames: {}, video_postcapture_frames: {}, "
-      "video_delay_frames: {}, fps: {}, activation_min_frame_change_rate: {}, "
+      "video_precapture_frames: {}, video_postcapture_frames: {}, fps: {}, "
+      "activation_min_frame_change_rate: {}, "
       "maintenance_min_frame_change_rate: {}, target_quality: {} (0-51, "
       "lower is better)",
       m_video_max_length, m_roi_gap_tolerance_frames, m_video_precapture_frames,
-      m_video_postcapture_frames, m_video_delay_frames, m_fps,
-      m_activation_min_frame_change_rate, m_maintenance_min_frame_change_rate,
-      m_target_quality);
+      m_video_postcapture_frames, m_fps, m_activation_min_frame_change_rate,
+      m_maintenance_min_frame_change_rate, m_target_quality);
   SPDLOG_INFO("enable_yolo_roi : {}, enable_sface_roi : {}, "
               "sface_mark_authorized_identity_as_not_interesting: {}",
               m_enable_yolo_roi, m_enable_sface_roi,

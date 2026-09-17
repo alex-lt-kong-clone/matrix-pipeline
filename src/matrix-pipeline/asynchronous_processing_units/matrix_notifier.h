@@ -47,8 +47,6 @@ class MatrixNotifier final : public IAsynchronousProcessingUnit {
   int m_video_precapture_frames{45};
   int m_roi_gap_tolerance_frames{120};
   int m_video_postcapture_frames{45};
-  // held back while recording, i.e. the tail dropped at stop
-  int m_video_delay_frames{0};
 
   std::chrono::time_point<std::chrono::steady_clock> m_current_video_start_at;
   size_t m_current_video_frame_count{0};
@@ -76,9 +74,13 @@ class MatrixNotifier final : public IAsynchronousProcessingUnit {
 
   double calculate_roi_score(const PipelineContext &ctx) const;
   void finalize_video_then_send_out(std::string temp_video_path,
+                                    std::string trimmed_video_path,
                                     std::string jpeg_data,
                                     cv::Size thumbnail_size,
                                     size_t frame_count) const;
+  std::optional<std::string> trim_video(const std::string &input_video_path,
+                                        const std::string &trimmed_video_path,
+                                        int frames_to_remove) const;
 
 public:
   explicit MatrixNotifier(const std::string &unit_path)
