@@ -38,12 +38,6 @@
       ]
     }
   ],
-  "overrides": [
-    {
-      "name": "libgnutls",
-      "version": "3.8.13"
-    }
-  ],
   "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
   "version": "0.0.2",
   "name": "matrix-pipeline"
