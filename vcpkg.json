@@ -41,7 +41,11 @@
   "overrides": [
     {
       "name": "libgnutls",
-      "version": "3.7.8"
+      "version": "3.8.13"
+    },
+    {
+      "name": "cpr",
+      "version": "1.14.2"
     }
   ],
   "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
