@@ -65,7 +65,7 @@ SynchronousProcessingResult CollectStats::process(cv::cuda::GpuMat &frame,
     m_frame_timestamps.push_back(capture_timestamp);
 
     // Remove frames older than window
-    while (!m_frame_timestamps.empty() &&
+    while (m_frame_timestamps.size() > 1 &&
            (capture_timestamp - m_frame_timestamps.front() >
             m_fps_sliding_window_length)) {
       m_frame_timestamps.pop_front();
