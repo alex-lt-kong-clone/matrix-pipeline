@@ -1,6 +1,6 @@
 #include "collect_stats.h"
 #include "../utils/misc.h"
-#include "../utils/statistics.h"
+#include "../core/statistics.h"
 
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>

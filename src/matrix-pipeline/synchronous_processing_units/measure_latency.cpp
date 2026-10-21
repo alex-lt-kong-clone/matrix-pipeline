@@ -1,5 +1,5 @@
 #include "measure_latency.h"
-#include "../utils/statistics.h"
+#include "../core/statistics.h"
 
 #include <iomanip>
 #include <spdlog/spdlog.h>
