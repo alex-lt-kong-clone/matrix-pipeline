@@ -140,8 +140,8 @@ Run in a build environment with CMake 3.24+, a C++17 compiler, a build tool,
 and a writable vcpkg checkout:
 
 ```bash
-cmake -S tests -B tmp/tests \
+cmake -S tests -B build/tests \
   -DCMAKE_TOOLCHAIN_FILE="$HOME/repos/vcpkg/scripts/buildsystems/vcpkg.cmake"
-cmake --build tmp/tests --parallel
-ctest --test-dir tmp/tests --output-on-failure
+cmake --build build/tests --parallel
+ctest --test-dir build/tests --output-on-failure
 ```
