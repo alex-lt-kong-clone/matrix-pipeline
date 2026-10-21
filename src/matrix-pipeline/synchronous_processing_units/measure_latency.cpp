@@ -1,9 +1,10 @@
 #include "measure_latency.h"
+#include "../utils/statistics.h"
 
-#include <algorithm>
 #include <iomanip>
 #include <spdlog/spdlog.h>
 #include <sstream>
+#include <utility>
 
 namespace MatrixPipeline::ProcessingUnit {
 
@@ -77,32 +78,13 @@ MeasureLatency::process([[maybe_unused]] cv::cuda::GpuMat &frame,
 }
 
 std::map<double, long long> MeasureLatency::get_percentile_stats() const {
-  if (m_history.empty()) {
-    return {};
-  }
-
-  // Extract values for sorting
-  // We reserve space to avoid reallocations during extraction
   std::vector<long long> values;
   values.reserve(m_history.size());
 
-  for (const auto &pair : m_history) {
+  for (const auto &pair : m_history)
     values.push_back(pair.second);
-  }
 
-  // Sort to determine percentiles
-  // So there is no escape, the Gemini 3Pro's version also needs sorting
-  std::sort(values.begin(), values.end());
-  size_t count = values.size();
-
-  std::map<double, long long> results;
-  for (double p : m_target_percentiles) {
-    double valid_p = std::max(0.0, std::min(1.0, p));
-    size_t index = static_cast<size_t>(valid_p * (count - 1));
-    results[p] = values[index];
-  }
-
-  return results;
+  return Utils::calculate_percentiles(std::move(values), m_target_percentiles);
 }
 
 std::string
