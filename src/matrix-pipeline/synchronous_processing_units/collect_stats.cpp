@@ -1,6 +1,6 @@
 #include "collect_stats.h"
 #include "../utils/misc.h"
-#include "../utils/statistics.h"
+#include "../core/statistics.h"
 
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
@@ -59,22 +59,8 @@ SynchronousProcessingResult CollectStats::process(cv::cuda::GpuMat &frame,
   if (frame.empty())
     return failure_and_continue;
 
-  {
-    const auto capture_timestamp = ctx.capture_timestamp;
-
-    m_frame_timestamps.push_back(capture_timestamp);
-
-    // Remove frames older than window
-    while (m_frame_timestamps.size() > 1 &&
-           (capture_timestamp - m_frame_timestamps.front() >
-            m_fps_sliding_window_length)) {
-      m_frame_timestamps.pop_front();
-    }
-
-    const auto actual_duration = capture_timestamp - m_frame_timestamps.front();
-    ctx.fps = Utils::calculate_frame_rate(
-        m_frame_timestamps.size(), actual_duration, m_fps_sliding_window_length);
-  }
+  ctx.fps = Utils::update_fps(m_frame_timestamps, ctx.capture_timestamp,
+                              m_fps_sliding_window_length);
 
   // =========================================================
   // 2. Calculate Change Rate

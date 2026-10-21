@@ -11,5 +11,7 @@
 - [gpt-6, 2026-10-20] For requested dependency upgrades, choose the newest stable upstream release at least 28 days old, stepping back through releases until that age requirement is met.
 - [gpt-6, 2026-10-20] For this dependency update, change only GnuTLS; let CPR follow the baseline without an override.
 - [gpt-6, 2026-10-20] Keep implementation commit chains clear by separating reversals, production refactors, test infrastructure, and tests when each is a distinct change.
-- [claude-opus-5.5, 2026-10-20] Building/running `tests/` must not touch production code; use the system toolchain and keep build output under `tmp/`. The toolchain is now installed (gcc-c++, cmake, make, EPEL gtest), so the no-toolchain note above no longer applies to `tests/`.
+- [claude-opus-5.5, 2026-10-20] Building/running `tests/` must not touch production code; use the system toolchain and keep build output under `tmp/<model-name>/`. The toolchain is now installed (gcc-c++, cmake, make, EPEL gtest), so the no-toolchain note above no longer applies to `tests/`.
 - [claude-opus-5.5, 2026-10-20] Do not pin libgnutls; let the vcpkg baseline choose its version. The old 3.7.8 pin's possible CPU-use reason is not a concern.
+- [claude-opus-5.5, 2026-10-21] Testable logic goes in `src/matrix-pipeline/core/`: no OpenCV, CUDA, TensorRT, drogon or spdlog there. `tests/` may include only `core/`.
+- [claude-opus-5.5, 2026-10-21] When a dedicated branch is proposed, the user may keep the work on the current branch and ask for a branch rename that matches its content.

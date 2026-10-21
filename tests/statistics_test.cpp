@@ -1,14 +1,17 @@
-#include "utils/statistics.h"
+#include "statistics.h"
 
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <deque>
 #include <map>
 
 namespace {
 
 using MatrixPipeline::Utils::calculate_frame_rate;
 using MatrixPipeline::Utils::calculate_percentiles;
+using MatrixPipeline::Utils::FrameTimestamp;
+using MatrixPipeline::Utils::update_fps;
 using namespace std::chrono_literals;
 
 TEST(FrameRate, UsesFrameIntervalsAndWindow) {
@@ -21,6 +24,20 @@ TEST(FrameRate, HandlesInitialSamplesAndZeroWindow) {
   EXPECT_FLOAT_EQ(calculate_frame_rate(1, 0ms, 1000ms), 0.0f);
   EXPECT_FLOAT_EQ(calculate_frame_rate(2, 0ms, 1000ms), 1.0f);
   EXPECT_FLOAT_EQ(calculate_frame_rate(2, 100ms, 0ms), 0.0f);
+}
+
+TEST(FrameRate, DropsFramesOutsideWindow) {
+  std::deque<FrameTimestamp> timestamps;
+  for (const auto t : {0ms, 500ms, 1500ms})
+    update_fps(timestamps, FrameTimestamp{t}, 1000ms);
+  EXPECT_EQ(timestamps.front(), FrameTimestamp{500ms});
+}
+
+TEST(FrameRate, KeepsNewestFrameWithNegativeWindow) {
+  std::deque<FrameTimestamp> timestamps;
+  update_fps(timestamps, FrameTimestamp{0ms}, -1ms);
+  EXPECT_FLOAT_EQ(update_fps(timestamps, FrameTimestamp{100ms}, -1ms), 0.0f);
+  EXPECT_EQ(timestamps.size(), 1u);
 }
 
 TEST(LatencyPercentiles, SortsSamplesAndClampsPercentiles) {

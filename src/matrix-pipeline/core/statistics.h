@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <deque>
 #include <map>
 #include <vector>
 
@@ -20,6 +21,18 @@ inline float calculate_frame_rate(std::size_t frame_count,
   return frame_count > 1 && seconds > 0.0f
              ? static_cast<float>(frame_count - 1) / seconds
              : 0.0f;
+}
+
+using FrameTimestamp = std::chrono::time_point<std::chrono::steady_clock,
+                                               std::chrono::milliseconds>;
+
+inline float update_fps(std::deque<FrameTimestamp> &timestamps,
+                        FrameTimestamp now, std::chrono::milliseconds window) {
+  timestamps.push_back(now);
+  while (timestamps.size() > 1 && now - timestamps.front() > window)
+    timestamps.pop_front();
+  return calculate_frame_rate(timestamps.size(), now - timestamps.front(),
+                              window);
 }
 
 inline std::map<double, long long>
