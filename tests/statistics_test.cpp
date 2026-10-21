@@ -1,4 +1,4 @@
-#include "core/statistics.h"
+#include "statistics.h"
 
 #include <gtest/gtest.h>
 
