@@ -129,3 +129,11 @@ make -j2
 
 - The repo is also tested with `Valgrind` from time to time:
   `valgrind --leak-check=yes --log-file=valgrind.rpt ./build/cs`.
+
+### CTest demo
+
+```bash
+cmake -S tests -B build/tests -DCMAKE_TOOLCHAIN_FILE="$HOME/repos/vcpkg/scripts/buildsystems/vcpkg.cmake"
+cmake --build build/tests --parallel
+ctest --test-dir build/tests --output-on-failure
+```

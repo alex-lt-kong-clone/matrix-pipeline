@@ -1,5 +1,6 @@
 #include "collect_stats.h"
 #include "../utils/misc.h"
+#include "../core/statistics.h"
 
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
@@ -58,45 +59,8 @@ SynchronousProcessingResult CollectStats::process(cv::cuda::GpuMat &frame,
   if (frame.empty())
     return failure_and_continue;
 
-  // =========================================================
-  // 1. Calculate FPS
-  // =========================================================
-  {
-    const auto capture_timestamp = ctx.capture_timestamp;
-
-    m_frame_timestamps.push_back(capture_timestamp);
-
-    // Remove frames older than window
-    while (!m_frame_timestamps.empty() &&
-           (capture_timestamp - m_frame_timestamps.front() >
-            m_fps_sliding_window_length)) {
-      m_frame_timestamps.pop_front();
-    }
-
-    // 1. Calculate the actual time span in the window
-    // duration_cast to seconds<float> handles the / 1000.0f logic automatically
-    const auto actual_duration = capture_timestamp - m_frame_timestamps.front();
-    // 2. Determine the divisor (clamped by the max window length)
-    // We use duration<float> to keep decimal precision
-    auto window_duration_float =
-        std::chrono::duration<float>(m_fps_sliding_window_length);
-
-    if (actual_duration < m_fps_sliding_window_length &&
-        actual_duration > std::chrono::steady_clock::duration::zero()) {
-      window_duration_float = std::chrono::duration<float>(actual_duration);
-    }
-
-    // 3. Calculate FPS
-    float seconds = window_duration_float.count();
-    size_t count = m_frame_timestamps.size();
-
-    if (count > 1 && seconds > 0.0f) {
-      // We use count - 1 because it takes two points to define one interval
-      ctx.fps = static_cast<float>(count - 1) / seconds;
-    } else {
-      ctx.fps = 0.0f;
-    }
-  }
+  ctx.fps = Utils::update_fps(m_frame_timestamps, ctx.capture_timestamp,
+                              m_fps_sliding_window_length);
 
   // =========================================================
   // 2. Calculate Change Rate

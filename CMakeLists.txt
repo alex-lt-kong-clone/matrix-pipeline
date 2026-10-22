@@ -28,6 +28,7 @@ message(STATUS "OpenCV_LIBS: ${OpenCV_LIBS}")
 # Force -O0 for Debug configurations
 # set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
 
+add_subdirectory(tests)
 add_subdirectory(src/matrix-pipeline)
 add_subdirectory(src/tools/yunet)
 add_subdirectory(src/tools/rtsp)
