@@ -122,15 +122,10 @@ make -j2
 
 ## Quality assurance
 
-- Instead of `cmake ../`, run:
+- The repo is tested with `Valgrind` from time to time:
+  `valgrind --leak-check=yes --log-file=valgrind.rpt ./build/mp`.
 
-    - `cmake -DBUILD_ASAN=ON ../`
-    - `cmake -DBUILD_UBSAN=ON ../`
-
-- The repo is also tested with `Valgrind` from time to time:
-  `valgrind --leak-check=yes --log-file=valgrind.rpt ./build/cs`.
-
-### CTest demo
+### CTest
 
 ```bash
 cmake -S tests -B build/tests -DCMAKE_TOOLCHAIN_FILE="$HOME/repos/vcpkg/scripts/buildsystems/vcpkg.cmake"
